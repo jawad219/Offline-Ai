@@ -1,4 +1,4 @@
-const C='offline-ai-v1';
+const C='offline-ai-v2';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(C).then(c=>c.addAll(['./','index.html','manifest.json','icon.svg'])).then(()=>self.skipWaiting()));
 });

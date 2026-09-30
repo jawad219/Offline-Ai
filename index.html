@@ -55,10 +55,11 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 <script type="module">
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.0/esm/index.js';
 const V='https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.0/esm';
-const wllama = new Wllama({
+const CFG={
   'single-thread/wllama.wasm': V+'/single-thread/wllama.wasm',
   'multi-thread/wllama.wasm': V+'/multi-thread/wllama.wasm',
-});
+};
+let wllama = new Wllama(CFG);
 const MODELS={
   q05:'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
   q15:'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf'
@@ -90,13 +91,21 @@ async function load(){
         $('st').textContent='Download: '+p+'% ('+Math.round(l/1048576)+' / '+Math.round(t/1048576)+' MB)';
       }
     };
+    let err1='';
     try{
       await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
     }catch(e1){
-      $('st').textContent='Cache saaf karke dobara download ho raha hai...';
+      err1=String(e1&&e1.message||e1);
+      $('st').textContent='Pehli koshish fail ('+err1+'). Cache saaf karke dobara...';
       try{await wllama.cacheManager.clear()}catch(_){}
       try{const ks=await caches.keys();for(const k of ks)if(k!=='offline-ai-v2')await caches.delete(k)}catch(_){}
-      await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
+      try{await wllama.exit()}catch(_){}
+      wllama=new Wllama(CFG);
+      try{
+        await wllama.loadModelFromUrl(MODELS[$('model').value],{...opts,n_ctx:512,n_batch:64});
+      }catch(e2){
+        throw new Error('1) '+err1+' | 2) '+String(e2&&e2.message||e2));
+      }
     }
     loaded=true;localStorage.setItem('ready',$('model').value);
     $('setup').style.display='none';$('ft').style.display='block';$('model').disabled=true;

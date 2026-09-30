@@ -1,7 +1,7 @@
-const C='offline-ai-v3';
+const C='offline-ai-v5';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(
-  caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())
+  caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('offline-ai-')&&k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())
 ));
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);

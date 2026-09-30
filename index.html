@@ -82,14 +82,22 @@ try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}ca
 async function load(){
   $('go').disabled=true;$('bar').style.display='block';$('st').textContent='Load ho raha hai...';
   try{
-    await wllama.loadModelFromUrl(MODELS[$('model').value],{
-      n_ctx:2048,
+    const opts={
+      n_ctx:1024,n_batch:128,
       progressCallback:({loaded:l,total:t})=>{
         const p=t?Math.round(l/t*100):0;
         $('bar').firstElementChild.style.width=p+'%';
         $('st').textContent='Download: '+p+'% ('+Math.round(l/1048576)+' / '+Math.round(t/1048576)+' MB)';
       }
-    });
+    };
+    try{
+      await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
+    }catch(e1){
+      $('st').textContent='Cache saaf karke dobara download ho raha hai...';
+      try{await wllama.cacheManager.clear()}catch(_){}
+      try{const ks=await caches.keys();for(const k of ks)if(k!=='offline-ai-v2')await caches.delete(k)}catch(_){}
+      await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
+    }
     loaded=true;localStorage.setItem('ready',$('model').value);
     $('setup').style.display='none';$('ft').style.display='block';$('model').disabled=true;
   }catch(e){

@@ -32,10 +32,10 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </style></head>
 <body>
 <header>
-  <b>Offline AI v4</b>
+  <b>Offline AI v5</b>
   <select id="model">
-    <option value="q05">Fast (0.5B, ~400MB)</option>
-    <option value="q15">Behtar (1.5B, ~1GB)</option>
+    <option value="q05">Fast (0.5B)</option>
+    <option value="q15">Behtar (1.5B, bhari)</option>
   </select>
   <button id="new" title="New chat">＋</button>
 </header>
@@ -53,20 +53,11 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </div></footer>
 
 <script type="module">
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.0/esm/index.js';
-const V='https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.0/esm';
-const CFG={
-  'single-thread/wllama.wasm': V+'/single-thread/wllama.wasm',
-  'multi-thread/wllama.wasm': V+'/multi-thread/wllama.wasm',
-};
-let wllama = new Wllama(CFG);
-const MODELS={
-  q05:'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
-  q15:'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf'
-};
+import { pipeline, TextStreamer, InterruptableStoppingCriteria } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
+const MODELS={q05:'onnx-community/Qwen2.5-0.5B-Instruct',q15:'onnx-community/Qwen2.5-1.5B-Instruct'};
 const SYS="Tum ek helpful AI assistant ho. Agar user Roman Urdu (Urdu English letters mein) likhe to Roman Urdu mein jawab do. Agar English likhe to English mein jawab do. Jawab saaf, seedha aur mukhtasar do.";
 const $=id=>document.getElementById(id);
-let hist=[],busy=false,ctrl=null,loaded=false;
+let hist=[],busy=false,stopper=null,gen=null;
 try{hist=JSON.parse(localStorage.getItem('hist')||'[]')}catch(e){}
 const save=()=>{try{localStorage.setItem('hist',JSON.stringify(hist))}catch(e){}};
 const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -80,60 +71,53 @@ hist.forEach(m=>add(m.role,m.content));
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 
+let loading=false;
 async function load(){
+  if(loading||gen)return;loading=true;
   $('go').disabled=true;$('bar').style.display='block';$('st').textContent='Load ho raha hai...';
+  const files={};
   try{
-    const opts={
-      n_ctx:1024,n_batch:128,
-      progressCallback:({loaded:l,total:t})=>{
-        const p=t?Math.round(l/t*100):0;
-        $('bar').firstElementChild.style.width=p+'%';
-        $('st').textContent='Download: '+p+'% ('+Math.round(l/1048576)+' / '+Math.round(t/1048576)+' MB)';
+    gen=await pipeline('text-generation',MODELS[$('model').value],{
+      dtype:'q4',device:'wasm',
+      progress_callback:p=>{
+        if(p.status==='progress'&&p.file){
+          files[p.file]={l:p.loaded||0,t:p.total||0};
+          let l=0,t=0;for(const k in files){l+=files[k].l;t+=files[k].t}
+          const pc=t?Math.round(l/t*100):0;
+          $('bar').firstElementChild.style.width=pc+'%';
+          $('st').textContent='Download: '+pc+'% ('+Math.round(l/1048576)+' / '+Math.round(t/1048576)+' MB)';
+        }else if(p.status==='ready'){$('st').textContent='Model tayyar ho raha hai...'}
       }
-    };
-    let err1='';
-    try{
-      await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
-    }catch(e1){
-      err1=String(e1&&e1.message||e1);
-      $('st').textContent='Pehli koshish fail ('+err1+'). Dobara load ho raha hai (download nahi hoga)...';
-      try{const ks=await caches.keys();for(const k of ks)if(k!=='offline-ai-v3')await caches.delete(k)}catch(_){}
-      try{await wllama.exit()}catch(_){}
-      wllama=new Wllama(CFG);
-      try{
-        await wllama.loadModelFromUrl(MODELS[$('model').value],{...opts,n_ctx:512,n_batch:64});
-      }catch(e2){
-        throw new Error('1) '+err1+' | 2) '+String(e2&&e2.message||e2));
-      }
-    }
-    loaded=true;localStorage.setItem('ready',$('model').value);
+    });
+    localStorage.setItem('ready',$('model').value);
     $('setup').style.display='none';$('ft').style.display='block';$('model').disabled=true;
   }catch(e){
-    $('st').textContent='Error: '+(e.message||e)+' — internet check karo ya chhota model choose karo.';
+    gen=null;
+    $('st').textContent='Error: '+String(e&&e.message||e);
     $('go').disabled=false;$('go').textContent='Dobara koshish karo';
   }
+  loading=false;
 }
 $('go').onclick=load;
 const rd=localStorage.getItem('ready');
 if(rd){$('model').value=rd;load();}
 
 async function send(){
-  if(busy){ctrl&&ctrl.abort();return}
-  const t=$('inp').value.trim();if(!t||!loaded)return;
+  if(busy){stopper&&stopper.interrupt();return}
+  const t=$('inp').value.trim();if(!t||!gen)return;
   $('inp').value='';$('inp').style.height='auto';
   hist.push({role:'user',content:t});add('user',t);
   const out=add('assistant','...');
-  busy=true;$('send').textContent='■';ctrl=new AbortController();
+  busy=true;$('send').textContent='■';stopper=new InterruptableStoppingCriteria();
   let acc='';
   try{
     const msgs=[{role:'system',content:SYS},...hist.slice(-8)];
-    const stream=await wllama.createChatCompletion(msgs,{
-      nPredict:512,sampling:{temp:0.7,top_k:40,top_p:0.9},stream:true,abortSignal:ctrl.signal
-    });
-    for await(const c of stream){acc=c.currentText;out.innerHTML=fmt(acc);$('chat').scrollTop=1e9}
-  }catch(e){ if(!acc) out.textContent='Error aa gaya, dobara try karo.'; }
+    const streamer=new TextStreamer(gen.tokenizer,{skip_prompt:true,skip_special_tokens:true,
+      callback_function:x=>{acc+=x;out.innerHTML=fmt(acc);$('chat').scrollTop=1e9}});
+    await gen(msgs,{max_new_tokens:512,do_sample:true,temperature:0.7,top_p:0.9,streamer,stopping_criteria:stopper});
+  }catch(e){ if(!acc) out.textContent='Error: '+String(e&&e.message||e); }
   if(acc){hist.push({role:'assistant',content:acc});save();}
-  busy=false;ctrl=null;$('send').textContent='↑';
+  busy=false;stopper=null;$('send').textContent='↑';
 }
 $('send').onclick=send;
 $('inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&window.innerWidth>700){e.preventDefault();send()}});

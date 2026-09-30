@@ -32,7 +32,7 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </style></head>
 <body>
 <header>
-  <b>Offline AI v3</b>
+  <b>Offline AI v4</b>
   <select id="model">
     <option value="q05">Fast (0.5B, ~400MB)</option>
     <option value="q15">Behtar (1.5B, ~1GB)</option>
@@ -96,8 +96,7 @@ async function load(){
       await wllama.loadModelFromUrl(MODELS[$('model').value],opts);
     }catch(e1){
       err1=String(e1&&e1.message||e1);
-      $('st').textContent='Pehli koshish fail ('+err1+'). Cache saaf karke dobara...';
-      try{await wllama.cacheManager.clear()}catch(_){}
+      $('st').textContent='Pehli koshish fail ('+err1+'). Dobara load ho raha hai (download nahi hoga)...';
       try{const ks=await caches.keys();for(const k of ks)if(k!=='offline-ai-v3')await caches.delete(k)}catch(_){}
       try{await wllama.exit()}catch(_){}
       wllama=new Wllama(CFG);

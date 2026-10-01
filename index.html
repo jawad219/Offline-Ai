@@ -32,7 +32,7 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </style></head>
 <body>
 <header>
-  <b>Offline AI v7</b>
+  <b>Offline AI v8</b>
   <select id="model">
     <option value="s135">Bohat chhota (135M, ~150MB)</option>
     <option value="s360">Chhota (360M, ~390MB)</option>
@@ -71,6 +71,9 @@ hist.forEach(m=>add(m.role,m.content));
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 
+const DT=['q8','q4','uint8'];
+let di=localStorage.getItem('dt')!==null?+localStorage.getItem('dt'):+(sessionStorage.getItem('di')||0);
+if(!(di>=0&&di<DT.length))di=0;
 let loading=false;
 async function load(){
   if(loading||gen)return;loading=true;
@@ -78,7 +81,7 @@ async function load(){
   const files={};
   try{
     gen=await pipeline('text-generation',MODELS[$('model').value],{
-      dtype:'q4',device:'wasm',
+      dtype:DT[di],device:'wasm',
       progress_callback:p=>{
         if(p.status==='progress'&&p.file){
           files[p.file]={l:p.loaded||0,t:p.total||0};
@@ -89,11 +92,18 @@ async function load(){
         }else if(p.status==='ready'){$('st').textContent='Model tayyar ho raha hai...'}
       }
     });
-    localStorage.setItem('ready',$('model').value);
+    localStorage.setItem('ready',$('model').value);localStorage.setItem('dt',String(di));
     $('setup').style.display='none';$('ft').style.display='block';$('model').disabled=true;
   }catch(e){
     gen=null;
-    $('st').textContent='Error: '+String(e&&e.message||e);
+    localStorage.removeItem('dt');localStorage.removeItem('ready');
+    if(di<DT.length-1){
+      sessionStorage.setItem('di',String(di+1));sessionStorage.setItem('auto','1');
+      $('st').textContent='Format '+DT[di]+' fail. Dusra format ('+DT[di+1]+') try ho raha hai...';
+      setTimeout(()=>location.reload(),1200);return;
+    }
+    sessionStorage.removeItem('di');
+    $('st').textContent='Error ('+DT[di]+'): '+String(e&&e.message||e);
     $('go').disabled=false;$('go').textContent='Dobara koshish karo';
   }
   loading=false;
@@ -101,6 +111,7 @@ async function load(){
 $('go').onclick=load;
 const rd=localStorage.getItem('ready');
 if(rd){$('model').value=rd;load();}
+if(sessionStorage.getItem('auto')==='1'){sessionStorage.removeItem('auto');load();}
 
 async function send(){
   if(busy){stopper&&stopper.interrupt();return}

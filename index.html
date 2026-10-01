@@ -32,10 +32,11 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </style></head>
 <body>
 <header>
-  <b>Offline AI v5</b>
+  <b>Offline AI v6</b>
   <select id="model">
-    <option value="q05">Fast (0.5B)</option>
-    <option value="q15">Behtar (1.5B, bhari)</option>
+    <option value="s360">Chhota (360M, ~300MB)</option>
+    <option value="s135">Bohat chhota (135M, ~150MB)</option>
+    <option value="q05">Bada (0.5B, crash ho sakta)</option>
   </select>
   <button id="new" title="New chat">＋</button>
 </header>
@@ -54,7 +55,7 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 
 <script type="module">
 import { pipeline, TextStreamer, InterruptableStoppingCriteria } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
-const MODELS={q05:'onnx-community/Qwen2.5-0.5B-Instruct',q15:'onnx-community/Qwen2.5-1.5B-Instruct'};
+const MODELS={s360:'onnx-community/SmolLM2-360M-Instruct',s135:'onnx-community/SmolLM2-135M-Instruct',q05:'onnx-community/Qwen2.5-0.5B-Instruct'};
 const SYS="Tum ek helpful AI assistant ho. Agar user Roman Urdu (Urdu English letters mein) likhe to Roman Urdu mein jawab do. Agar English likhe to English mein jawab do. Jawab saaf, seedha aur mukhtasar do.";
 const $=id=>document.getElementById(id);
 let hist=[],busy=false,stopper=null,gen=null;

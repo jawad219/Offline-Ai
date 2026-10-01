@@ -32,7 +32,7 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 </style></head>
 <body>
 <header>
-  <b>Offline AI v8</b>
+  <b>Offline AI v9</b>
   <select id="model">
     <option value="s135">Bohat chhota (135M, ~150MB)</option>
     <option value="s360">Chhota (360M, ~390MB)</option>
@@ -55,7 +55,7 @@ textarea{flex:1;background:transparent;border:0;outline:0;color:#ececec;font:16p
 <script type="module">
 import { pipeline, TextStreamer, InterruptableStoppingCriteria } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
 const MODELS={s360:'HuggingFaceTB/SmolLM2-360M-Instruct',s135:'HuggingFaceTB/SmolLM2-135M-Instruct',q05:'onnx-community/Qwen2.5-0.5B-Instruct'};
-const SYS="Tum ek helpful AI assistant ho. Agar user Roman Urdu (Urdu English letters mein) likhe to Roman Urdu mein jawab do. Agar English likhe to English mein jawab do. Jawab saaf, seedha aur mukhtasar do.";
+const SYS="You are a helpful assistant. Reply briefly and clearly in the same language the user writes in.";
 const $=id=>document.getElementById(id);
 let hist=[],busy=false,stopper=null,gen=null;
 try{hist=JSON.parse(localStorage.getItem('hist')||'[]')}catch(e){}
@@ -92,8 +92,8 @@ async function load(){
         }else if(p.status==='ready'){$('st').textContent='Model tayyar ho raha hai...'}
       }
     });
-    localStorage.setItem('ready',$('model').value);localStorage.setItem('dt',String(di));
-    $('setup').style.display='none';$('ft').style.display='block';$('model').disabled=true;
+    localStorage.setItem('ready',$('model').value);localStorage.setItem('pick',$('model').value);localStorage.setItem('dt',String(di));
+    $('setup').style.display='none';$('ft').style.display='block';
   }catch(e){
     gen=null;
     localStorage.removeItem('dt');localStorage.removeItem('ready');
@@ -109,6 +109,8 @@ async function load(){
   loading=false;
 }
 $('go').onclick=load;
+const pick=localStorage.getItem('pick');if(pick&&MODELS[pick])$('model').value=pick;
+$('model').onchange=()=>{localStorage.setItem('pick',$('model').value);localStorage.removeItem('ready');sessionStorage.setItem('auto','1');location.reload()};
 const rd=localStorage.getItem('ready');
 if(rd){$('model').value=rd;load();}
 if(sessionStorage.getItem('auto')==='1'){sessionStorage.removeItem('auto');load();}
@@ -118,14 +120,14 @@ async function send(){
   const t=$('inp').value.trim();if(!t||!gen)return;
   $('inp').value='';$('inp').style.height='auto';
   hist.push({role:'user',content:t});add('user',t);
-  const out=add('assistant','...');
+  const out=add('assistant','Soch raha hai... (pehla jawab slow ho sakta hai)');
   busy=true;$('send').textContent='■';stopper=new InterruptableStoppingCriteria();
   let acc='';
   try{
-    const msgs=[{role:'system',content:SYS},...hist.slice(-8)];
+    const msgs=[{role:'system',content:SYS},...hist.slice(-4)];
     const streamer=new TextStreamer(gen.tokenizer,{skip_prompt:true,skip_special_tokens:true,
       callback_function:x=>{acc+=x;out.innerHTML=fmt(acc);$('chat').scrollTop=1e9}});
-    await gen(msgs,{max_new_tokens:512,do_sample:true,temperature:0.7,top_p:0.9,streamer,stopping_criteria:stopper});
+    await gen(msgs,{max_new_tokens:160,do_sample:true,temperature:0.4,top_p:0.9,repetition_penalty:1.1,streamer,stopping_criteria:stopper});
   }catch(e){ if(!acc) out.textContent='Error: '+String(e&&e.message||e); }
   if(acc){hist.push({role:'assistant',content:acc});save();}
   busy=false;stopper=null;$('send').textContent='↑';
